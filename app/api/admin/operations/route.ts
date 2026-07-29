@@ -128,6 +128,13 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // 5. 更新配置版本号（每次保存配置自动刷新，App 检测到变化后强制刷新网页）
+    await prisma.systemConfig.upsert({
+      where: { key: 'config_version' },
+      update: { value: String(Date.now()) },
+      create: { key: 'config_version', value: String(Date.now()) },
+    })
+
     return NextResponse.json({ message: '保存成功' })
   } catch (error) {
     console.error('PUT /api/admin/operations 出错:', error)

@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "setup": "node scripts/setup-env.mjs",
+    "setup": "node scripts/auto-setup.mjs",
     "turso": "node scripts/turso-setup.mjs",
+    "auto-setup": "node scripts/auto-setup.mjs",
     "dev": "next dev",
     "build": "prisma generate && next build",
     "postbuild": "node scripts/postbuild.mjs",

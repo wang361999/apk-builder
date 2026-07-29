@@ -296,6 +296,23 @@ async function init() {
     console.log(`[turso-init] 公告创建跳过: ${err.message?.split('\n')[0] || ''}`)
   }
 
+  // 9. 初始化配置版本号（用于 App 强制刷新检测）
+  try {
+    const existingVer = await db.execute({
+      sql: 'SELECT id FROM "system_config" WHERE key = ?',
+      args: ['config_version'],
+    })
+    if (existingVer.rows.length === 0) {
+      await db.execute({
+        sql: 'INSERT INTO "system_config" (key, value) VALUES (?, ?)',
+        args: ['config_version', String(Date.now())],
+      })
+      console.log('[turso-init] 配置版本号初始化 ✓')
+    }
+  } catch (err) {
+    console.log(`[turso-init] 配置版本号跳过: ${err.message?.split('\n')[0] || ''}`)
+  }
+
   console.log('[turso-init] 初始化完成')
 }
 

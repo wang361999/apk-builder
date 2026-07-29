@@ -81,10 +81,17 @@ public class MainActivity extends AppCompatActivity {
     private boolean enableExitConfirm = false;
     private boolean popupShownToday = false;
 
+    // 配置版本号缓存（用于检测后台配置是否变化，变了就强制刷新）
+    private String lastConfigVersion = "";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        // 读取上次保存的配置版本号
+        SharedPreferences sp = getSharedPreferences("app_config", Context.MODE_PRIVATE);
+        lastConfigVersion = sp.getString("config_version", "");
 
         initViews();
         setupWebView();
@@ -142,6 +149,22 @@ public class MainActivity extends AppCompatActivity {
 
     private void applyConfig(JSONObject json) {
         try {
+            // 0. 检测配置版本号是否变化（后台保存配置后版本号自动更新）
+            String configVersion = json.optString("configVersion", "");
+            if (!configVersion.isEmpty()) {
+                if (!lastConfigVersion.isEmpty() && !configVersion.equals(lastConfigVersion)) {
+                    // 版本号变了，说明后台配置有更新，强制刷新网页
+                    Log.d(TAG, "配置版本号变化: " + lastConfigVersion + " -> " + configVersion);
+                    forceRefreshWebView();
+                }
+                // 保存新版本号
+                lastConfigVersion = configVersion;
+                getSharedPreferences("app_config", Context.MODE_PRIVATE)
+                    .edit()
+                    .putString("config_version", configVersion)
+                    .apply();
+            }
+
             // 1. 版本检查
             if (json.has("version") && !json.isNull("version")) {
                 JSONObject version = json.getJSONObject("version");
@@ -187,6 +210,24 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.e(TAG, "应用配置失败", e);
         }
+    }
+
+    // ==============================
+    // 强制刷新网页（清除缓存后重新加载）
+    // ==============================
+    private void forceRefreshWebView() {
+        // 清除 WebView 缓存
+        webView.clearCache(true);
+        webView.clearHistory();
+
+        // 清除 Cookie
+        android.webkit.CookieManager.getInstance().removeAllCookies(null);
+        android.webkit.CookieManager.getInstance().flush();
+
+        // 重新加载网页
+        webView.loadUrl(appUrl);
+
+        Log.d(TAG, "已强制刷新网页（配置版本变化）");
     }
 
     // ==============================
@@ -590,6 +631,11 @@ public class MainActivity extends AppCompatActivity {
         String desktopUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
         settings.setUserAgentString(desktopUA);
 
+        // 强制使用桌面版 viewport，让网页以电脑模式渲染
+        // 很多网站通过屏幕宽度判断是否显示手机版，设为 1280 模拟桌面屏幕
+        settings.setUseWideViewPort(true);
+        settings.setLoadWithOverviewMode(false);
+
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -608,6 +654,13 @@ public class MainActivity extends AppCompatActivity {
                 super.onPageStarted(view, url, favicon);
                 progressBar.setVisibility(View.VISIBLE);
                 swipeRefreshLayout.setRefreshing(false);
+
+                // 页面开始加载时尽早注入桌面 viewport
+                String js = "javascript:(function(){" +
+                    "var meta = document.querySelector('meta[name=\"viewport\"]');" +
+                    "if(meta){meta.setAttribute('content','width=1280, initial-scale=0.4, maximum-scale=5.0, user-scalable=yes');}" +
+                    "})();";
+                view.evaluateJavascript(js, null);
             }
 
             @Override
@@ -615,6 +668,23 @@ public class MainActivity extends AppCompatActivity {
                 super.onPageFinished(view, url);
                 progressBar.setVisibility(View.GONE);
                 swipeRefreshLayout.setRefreshing(false);
+
+                // 页面加载完成后注入 JS：设置桌面 viewport + 隐藏网页自带的移动端导航栏
+                String js = "javascript:(function(){" +
+                    // 强制设置桌面版 viewport
+                    "var meta = document.querySelector('meta[name=\"viewport\"]');" +
+                    "if(meta){meta.setAttribute('content','width=1280, initial-scale=0.4, maximum-scale=5.0, user-scalable=yes');}" +
+                    "else{meta=document.createElement('meta');meta.name='viewport';meta.content='width=1280, initial-scale=0.4, maximum-scale=5.0, user-scalable=yes';document.head.appendChild(meta);}" +
+                    // 隐藏常见的移动端导航栏/header
+                    "var selectors=['header','[class*=\"mobile-header\"]','[class*=\"navbar-mobile\"]','[class*=\"app-header\"]','[id*=\"mobile-header\"]','nav[class*=\"mobile\"]']," +
+                    "els=[];" +
+                    "selectors.forEach(function(s){document.querySelectorAll(s).forEach(function(e){els.push(e);});});" +
+                    "els.forEach(function(e){e.style.display='none';});" +
+                    // 移除 body 上的 mobile class
+                    "document.body.className=document.body.className.replace(/mobile|phone/gi,'');" +
+                    "document.documentElement.className=document.documentElement.className.replace(/mobile|phone/gi,'');" +
+                    "})();";
+                view.evaluateJavascript(js, null);
             }
         });
 

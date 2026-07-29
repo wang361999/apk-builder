@@ -129,6 +129,13 @@ export async function PUT(request: NextRequest) {
 
     const savedCount = savedItems.filter(key => verifyMap[key]).length
 
+    // 更新配置版本号（触发 App 端强制刷新）
+    await prisma.systemConfig.upsert({
+      where: { key: 'config_version' },
+      update: { value: String(Date.now()) },
+      create: { key: 'config_version', value: String(Date.now()) },
+    })
+
     return NextResponse.json({
       message: '配置保存成功',
       updatedCount: savedItems.length,

@@ -34,8 +34,18 @@ export async function GET() {
     // 5. 公告
     const announcement = await prisma.announcement.findFirst()
 
+    // 6. 配置版本号（用于 App 判断是否需要强制刷新）
+    //    取所有配置表中最大的 updated_at 时间戳，后台每次保存配置都会变化
+    const configVersionEntry = await prisma.systemConfig.findUnique({
+      where: { key: 'config_version' },
+    })
+    const configVersion = configVersionEntry?.value || String(Date.now())
+
     // 组装返回数据
     const result = {
+      // 配置版本号：后台每次保存配置自动更新，App 检测到变化后强制刷新网页
+      configVersion,
+
       version: latestVersion
         ? {
             code: latestVersion.versionCode,

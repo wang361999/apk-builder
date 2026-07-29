@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace 'com.webview.app'
+    namespace "com.webview.app"
     compileSdk 34
 
     defaultConfig {
@@ -23,7 +23,7 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled true
+            minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }

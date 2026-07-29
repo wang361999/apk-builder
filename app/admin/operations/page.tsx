@@ -57,6 +57,7 @@ const STYLE_LABELS: Record<string, string> = {
   statusBarColor: '状态栏颜色',
   appName: 'App 名称',
   loadingText: '加载提示文字',
+  webScale: '网页缩放比例',
 }
 
 type TabKey = 'ads' | 'features' | 'styles' | 'announcement'
@@ -411,6 +412,30 @@ export default function OperationsPage() {
                                 placeholder="#3B82F6"
                                 className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono"
                               />
+                            </div>
+                          ) : s.key === 'webScale' ? (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-4">
+                                <input
+                                  type="range"
+                                  min="0.1"
+                                  max="1.0"
+                                  step="0.05"
+                                  value={s.value || '0.4'}
+                                  onChange={(e) => updateStyle(s.key, e.target.value)}
+                                  className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                />
+                                <span className="text-sm font-mono text-gray-700 w-16 text-right">
+                                  {s.value || '0.4'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between text-xs text-gray-400">
+                                <span>缩小 0.1</span>
+                                <span>原始 1.0</span>
+                              </div>
+                              <p className="text-xs text-gray-400">
+                                数值越小网页显示越小，推荐 0.3-0.5。用户仍可在 App 内双指缩放。
+                              </p>
                             </div>
                           ) : (
                             <input

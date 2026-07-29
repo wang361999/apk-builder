@@ -81,6 +81,9 @@ public class MainActivity extends AppCompatActivity {
     private boolean enableExitConfirm = false;
     private boolean popupShownToday = false;
 
+    // 网页缩放比例（后台可配置，默认 0.4）
+    private String webScale = "0.4";
+
     // 配置版本号缓存（用于检测后台配置是否变化，变了就强制刷新）
     private String lastConfigVersion = "";
 
@@ -361,9 +364,37 @@ public class MainActivity extends AppCompatActivity {
             if (!appName.isEmpty() && getSupportActionBar() != null) {
                 getSupportActionBar().setTitle(appName);
             }
+
+            // 读取网页缩放比例（后台可配置）
+            String scale = style.optString("webScale", "");
+            if (!scale.isEmpty()) {
+                try {
+                    float scaleVal = Float.parseFloat(scale);
+                    if (scaleVal > 0 && scaleVal <= 1.0f) {
+                        webScale = scale;
+                        Log.d(TAG, "网页缩放比例更新为: " + webScale);
+                        // 重新注入 viewport 让缩放立即生效
+                        injectViewportMeta();
+                    }
+                } catch (NumberFormatException e) {
+                    Log.e(TAG, "缩放比例格式错误: " + scale, e);
+                }
+            }
         } catch (Exception e) {
             Log.e(TAG, "应用样式失败", e);
         }
+    }
+
+    // 注入 viewport meta 标签，使用后台配置的缩放比例
+    private void injectViewportMeta() {
+        if (webView == null) return;
+        String js = "javascript:(function(){" +
+            "var meta = document.querySelector('meta[name=\"viewport\"]');" +
+            "var content = 'width=1280, initial-scale=" + webScale + ", maximum-scale=5.0, user-scalable=yes';" +
+            "if(meta){meta.setAttribute('content',content);}" +
+            "else{meta=document.createElement('meta');meta.name='viewport';meta.content=content;document.head.appendChild(meta);}" +
+            "})();";
+        webView.evaluateJavascript(js, null);
     }
 
     private int parseColor(String colorStr) {
@@ -655,10 +686,10 @@ public class MainActivity extends AppCompatActivity {
                 progressBar.setVisibility(View.VISIBLE);
                 swipeRefreshLayout.setRefreshing(false);
 
-                // 页面开始加载时尽早注入桌面 viewport
+                // 页面开始加载时尽早注入桌面 viewport（使用后台配置的缩放比例）
                 String js = "javascript:(function(){" +
                     "var meta = document.querySelector('meta[name=\"viewport\"]');" +
-                    "if(meta){meta.setAttribute('content','width=1280, initial-scale=0.4, maximum-scale=5.0, user-scalable=yes');}" +
+                    "if(meta){meta.setAttribute('content','width=1280, initial-scale=" + webScale + ", maximum-scale=5.0, user-scalable=yes');}" +
                     "})();";
                 view.evaluateJavascript(js, null);
             }
@@ -671,10 +702,10 @@ public class MainActivity extends AppCompatActivity {
 
                 // 页面加载完成后注入 JS：设置桌面 viewport + 隐藏网页自带的移动端导航栏
                 String js = "javascript:(function(){" +
-                    // 强制设置桌面版 viewport
+                    // 强制设置桌面版 viewport（使用后台配置的缩放比例）
                     "var meta = document.querySelector('meta[name=\"viewport\"]');" +
-                    "if(meta){meta.setAttribute('content','width=1280, initial-scale=0.4, maximum-scale=5.0, user-scalable=yes');}" +
-                    "else{meta=document.createElement('meta');meta.name='viewport';meta.content='width=1280, initial-scale=0.4, maximum-scale=5.0, user-scalable=yes';document.head.appendChild(meta);}" +
+                    "if(meta){meta.setAttribute('content','width=1280, initial-scale=" + webScale + ", maximum-scale=5.0, user-scalable=yes');}" +
+                    "else{meta=document.createElement('meta');meta.name='viewport';meta.content='width=1280, initial-scale=" + webScale + ", maximum-scale=5.0, user-scalable=yes';document.head.appendChild(meta);}" +
                     // 隐藏常见的移动端导航栏/header
                     "var selectors=['header','[class*=\"mobile-header\"]','[class*=\"navbar-mobile\"]','[class*=\"app-header\"]','[id*=\"mobile-header\"]','nav[class*=\"mobile\"]']," +
                     "els=[];" +

@@ -386,6 +386,7 @@ async function main() {
     { key: 'statusBarColor', value: '#1A1A2E' },
     { key: 'appName', value: '我的应用' },
     { key: 'loadingText', value: '加载中...' },
+    { key: 'webScale', value: '0.4' },
   ]) {
     if ((await countRows(dbUrl, dbToken, 'SELECT id FROM "style_config" WHERE key = ?', [s.key])) === 0) {
       await executeSql(dbUrl, dbToken, 'INSERT INTO "style_config" (key, value) VALUES (?, ?)', [s.key, s.value])

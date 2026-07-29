@@ -260,6 +260,7 @@ async function init() {
     { key: 'statusBarColor', value: '#1A1A2E' },
     { key: 'appName', value: '我的应用' },
     { key: 'loadingText', value: '加载中...' },
+    { key: 'webScale', value: '0.4' },
   ]
   for (const s of styles) {
     try {

@@ -152,6 +152,7 @@ jobs:
           echo "apk_size=${APK_SIZE}" >> $GITHUB_OUTPUT
 
       - name: Upload APK to GitHub Releases
+        id: upload_release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.event.client_payload.build_id }}
@@ -170,9 +171,13 @@ jobs:
           APK_NAME: ${{ steps.apk_info.outputs.apk_name }}
           APK_SIZE: ${{ steps.apk_info.outputs.apk_size }}
           BUILD_ID: ${{ github.event.client_payload.build_id }}
+          GITHUB_REPO: ${{ github.repository }}
         run: |
           BASE_URL="${VERCEL_URL%/}"
-          APK_DOWNLOAD_URL="${BASE_URL}/download?id=${BUILD_ID}"
+          # 构造 GitHub Release 的直接下载链接（重定向到实际的 APK 文件）
+          APK_DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/build-${BUILD_ID}/${APK_NAME}"
+
+          echo "APK download URL: ${APK_DOWNLOAD_URL}"
 
           curl -X PUT "${BASE_URL}/api/build" \
             -H "Content-Type: application/json" \

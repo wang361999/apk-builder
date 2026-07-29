@@ -69,7 +69,7 @@ export async function GET() {
   } catch (error) {
     console.error('GET /api/admin/config 出错:', error)
     return NextResponse.json(
-      { error: '服务器内部错误' },
+      { error: '服务器内部错误: ' + (error instanceof Error ? error.message : '未知错误') },
       { status: 500 }
     )
   }
@@ -89,9 +89,11 @@ export async function PUT(request: NextRequest) {
     const updates: { key: string; value: string }[] = []
 
     for (const key of EDITABLE_KEYS) {
-      if (body[key] !== undefined) {
+      if (body[key] !== undefined && body[key] !== '') {
         const value = String(body[key]).trim()
-        updates.push({ key, value })
+        if (value) {
+          updates.push({ key, value })
+        }
       }
     }
 
@@ -102,23 +104,42 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // 批量 upsert
+    // 批量 upsert，逐条执行并记录结果
+    const savedItems: string[] = []
     for (const { key, value } of updates) {
-      await prisma.systemConfig.upsert({
-        where: { key },
-        update: { value },
-        create: { key, value },
-      })
+      try {
+        await prisma.systemConfig.upsert({
+          where: { key },
+          update: { value },
+          create: { key, value },
+        })
+        savedItems.push(key)
+      } catch (err) {
+        console.error(`保存配置项 ${key} 失败:`, err)
+        throw new Error(`保存配置项 ${key} 失败: ${err instanceof Error ? err.message : '未知错误'}`)
+      }
     }
+
+    // 验证保存结果：重新读取确认数据已持久化
+    const verifyConfigs = await prisma.systemConfig.findMany()
+    const verifyMap: Record<string, string> = {}
+    for (const c of verifyConfigs) {
+      verifyMap[c.key] = c.value
+    }
+
+    const savedCount = savedItems.filter(key => verifyMap[key]).length
 
     return NextResponse.json({
       message: '配置保存成功',
-      updatedCount: updates.length,
+      updatedCount: savedItems.length,
+      savedCount,
+      savedKeys: savedItems,
+      verified: savedCount === savedItems.length,
     })
   } catch (error) {
     console.error('PUT /api/admin/config 出错:', error)
     return NextResponse.json(
-      { error: '服务器内部错误' },
+      { error: '保存配置失败: ' + (error instanceof Error ? error.message : '未知错误') },
       { status: 500 }
     )
   }

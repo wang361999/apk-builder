@@ -40,7 +40,21 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // 302 重定向到实际下载链接
+    // 如果 downloadUrl 已经是 GitHub Release 的直接下载链接，直接重定向
+    if (buildRecord.downloadUrl.includes('github.com') && buildRecord.downloadUrl.includes('/releases/download/')) {
+      return NextResponse.redirect(buildRecord.downloadUrl, 302)
+    }
+
+    // 兼容旧数据：如果 downloadUrl 指向本站 /download，说明是旧格式，无法重定向
+    if (buildRecord.downloadUrl.includes('/download?id=')) {
+      // 返回错误提示
+      return NextResponse.json(
+        { error: '下载链接格式异常，请联系管理员检查 GitHub Release' },
+        { status: 500 }
+      )
+    }
+
+    // 其他情况直接重定向
     return NextResponse.redirect(buildRecord.downloadUrl, 302)
   } catch (error) {
     console.error('GET /api/download 出错:', error)

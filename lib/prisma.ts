@@ -21,6 +21,12 @@ function createPrismaClient(): PrismaClient {
   return new PrismaClient()
 }
 
+// 始终缓存 Prisma 客户端（包括生产环境），避免每次请求都新建连接
 export const prisma = globalForPrisma.prisma ?? createPrismaClient()
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma
+} else {
+  // 生产环境也缓存，避免 Vercel serverless 函数重复创建连接
+  globalForPrisma.prisma = prisma
+}

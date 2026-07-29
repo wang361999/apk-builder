@@ -179,7 +179,6 @@ function DownloadContent() {
         {buildData?.downloadUrl ? (
           <a
             href={buildData.downloadUrl}
-            download
             className="block w-full py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold text-lg rounded-xl transition text-center shadow-lg hover:shadow-xl"
           >
             ⬇️ 下载 APK

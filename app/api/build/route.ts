@@ -1,12 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getSession } from '@/lib/session'
 
-// 校验包名格式：至少两段，每段小写字母数字
+// 模板列表
+const TEMPLATES = [
+  { id: 'standard', name: '标准模板', desc: '带标题栏、下拉刷新、广告、公告等完整功能' },
+  { id: 'fullscreen', name: '全屏模板', desc: '无标题栏，全屏沉浸式，隐藏状态栏和导航栏' },
+  { id: 'minimal', name: '极简模板', desc: '无标题栏但保留状态栏，仅 WebView + 进度条' },
+  { id: 'immersive', name: '沉浸式模板', desc: '透明状态栏，内容延伸到状态栏下方' },
+]
+
+// 校验包名格式
 function isValidPackageName(packageName: string): boolean {
   const segment = /^[a-z][a-z0-9]*$/
   const parts = packageName.split('.')
   if (parts.length < 2) return false
   return parts.every((p) => segment.test(p))
+}
+
+// 校验模板 ID
+function isValidTemplate(template: string): boolean {
+  return TEMPLATES.some((t) => t.id === template)
 }
 
 // 从数据库读取系统配置
@@ -32,11 +46,95 @@ async function getSystemConfig(): Promise<{
   }
 }
 
-// POST /api/build —— 用户提交构建请求
+// GET /api/build —— 获取模板列表 / 构建状态 / 构建历史
+//   无参数            → 返回模板列表
+//   ?id=xxx           → 查询某条构建记录
+//   ?action=history   → 查询当前登录用户的构建历史
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  const id = searchParams.get('id')
+  const action = searchParams.get('action')
+
+  // action=history → 查询当前用户的构建历史
+  if (action === 'history') {
+    try {
+      const session = await getSession()
+      if (!session.isLoggedIn || !session.userId) {
+        return NextResponse.json(
+          { error: '请先登录' },
+          { status: 401 }
+        )
+      }
+
+      const list = await prisma.buildRecord.findMany({
+        where: { userId: session.userId },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: {
+          id: true,
+          appName: true,
+          packageName: true,
+          template: true,
+          status: true,
+          downloadUrl: true,
+          createdAt: true,
+        },
+      })
+
+      return NextResponse.json({ list })
+    } catch (error) {
+      console.error('GET /api/build?action=history 出错:', error)
+      return NextResponse.json(
+        { error: '服务器内部错误' },
+        { status: 500 }
+      )
+    }
+  }
+
+  // 如果有 id 参数，查询构建状态
+  if (id) {
+    try {
+      const buildId = Number(id)
+      if (Number.isNaN(buildId)) {
+        return NextResponse.json({ error: 'id 参数不正确' }, { status: 400 })
+      }
+
+      const buildRecord = await prisma.buildRecord.findUnique({
+        where: { id: buildId },
+        include: {
+          user: { select: { id: true, username: true } },
+        },
+      })
+
+      if (!buildRecord) {
+        return NextResponse.json({ error: '构建记录不存在' }, { status: 404 })
+      }
+
+      return NextResponse.json(buildRecord)
+    } catch (error) {
+      console.error('GET /api/build 出错:', error)
+      return NextResponse.json({ error: '服务器内部错误' }, { status: 500 })
+    }
+  }
+
+  // 没有参数，返回模板列表
+  return NextResponse.json({ templates: TEMPLATES })
+}
+
+// POST /api/build —— 用户提交构建请求（需登录）
 export async function POST(request: NextRequest) {
   try {
+    // 鉴权：必须登录才能生成
+    const session = await getSession()
+    if (!session.isLoggedIn) {
+      return NextResponse.json(
+        { error: '请先登录后再生成 APK' },
+        { status: 401 }
+      )
+    }
+
     const body = await request.json()
-    const { url, appName, packageName, userId } = body || {}
+    const { url, appName, packageName, template, userId } = body || {}
 
     // 1. 校验必填字段
     if (!url || !appName || !packageName) {
@@ -61,10 +159,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 3. 校验模板
+    const resolvedTemplate = template || 'standard'
+    if (!isValidTemplate(resolvedTemplate)) {
+      return NextResponse.json(
+        { error: '模板不存在，可选：standard、fullscreen、minimal、immersive' },
+        { status: 400 }
+      )
+    }
+
     // 规范化 userId
     const resolvedUserId =
       userId === null || userId === undefined || userId === ''
-        ? null
+        ? session.userId || null
         : Number(userId)
 
     if (resolvedUserId !== null && Number.isNaN(resolvedUserId)) {
@@ -74,18 +181,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 3. 在数据库创建 BuildRecord，状态为 "building"
+    // 4. 在数据库创建 BuildRecord，状态为 "building"
     const buildRecord = await prisma.buildRecord.create({
       data: {
         url,
         appName,
         packageName,
+        template: resolvedTemplate,
         status: 'building',
         userId: resolvedUserId,
       },
     })
 
-    // 4. 读取系统配置
+    // 5. 读取系统配置
     const { githubToken, githubRepo, githubBranch, webhookSecret, vercelUrl } = await getSystemConfig()
 
     // 检查配置是否齐全
@@ -96,7 +204,6 @@ export async function POST(request: NextRequest) {
     if (!webhookSecret) missingConfigs.push('Webhook 密钥')
 
     if (missingConfigs.length > 0) {
-      // 配置不完整，直接标记为失败
       await prisma.buildRecord.update({
         where: { id: buildRecord.id },
         data: {
@@ -115,7 +222,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 5. 触发 GitHub Actions
+    // 6. 触发 GitHub Actions（传入模板参数）
     let triggerError = ''
     try {
       const response = await fetch(`https://api.github.com/repos/${githubRepo}/dispatches`, {
@@ -131,6 +238,7 @@ export async function POST(request: NextRequest) {
             url,
             app_name: appName,
             package_name: packageName,
+            template: resolvedTemplate,
             webhook_secret: webhookSecret,
             vercel_url: vercelUrl,
           },
@@ -155,7 +263,6 @@ export async function POST(request: NextRequest) {
     }
 
     if (triggerError) {
-      // 触发失败，标记构建为失败
       await prisma.buildRecord.update({
         where: { id: buildRecord.id },
         data: {
@@ -174,7 +281,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 6. 返回 buildRecord 的 id
+    // 7. 返回 buildRecord 的 id
     return NextResponse.json(
       { id: buildRecord.id, message: '构建已提交，GitHub Actions 正在执行' },
       { status: 201 }
@@ -188,58 +295,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/build?id=xxx —— 查询构建状态
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
-
-    if (!id) {
-      return NextResponse.json(
-        { error: '缺少 id 参数' },
-        { status: 400 }
-      )
-    }
-
-    const buildId = Number(id)
-    if (Number.isNaN(buildId)) {
-      return NextResponse.json(
-        { error: 'id 参数不正确' },
-        { status: 400 }
-      )
-    }
-
-    // 查询 BuildRecord
-    const buildRecord = await prisma.buildRecord.findUnique({
-      where: { id: buildId },
-      include: {
-        user: {
-          select: { id: true, username: true },
-        },
-      },
-    })
-
-    if (!buildRecord) {
-      return NextResponse.json(
-        { error: '构建记录不存在' },
-        { status: 404 }
-      )
-    }
-
-    return NextResponse.json(buildRecord)
-  } catch (error) {
-    console.error('GET /api/build 出错:', error)
-    return NextResponse.json(
-      { error: '服务器内部错误' },
-      { status: 500 }
-    )
-  }
-}
-
 // PUT /api/build —— GitHub Actions 回调更新构建状态
 export async function PUT(request: NextRequest) {
   try {
-    // 1. API Key 验证（从数据库读取 webhook secret，对比 header x-webhook-secret）
     const { webhookSecret } = await getSystemConfig()
     const headerSecret = request.headers.get('x-webhook-secret')
 
@@ -260,7 +318,6 @@ export async function PUT(request: NextRequest) {
     const body = await request.json()
     const { buildId, status, downloadUrl, versionName, fileSize, buildLog } = body || {}
 
-    // 2. 校验 buildId 存在
     if (buildId === undefined || buildId === null) {
       return NextResponse.json(
         { error: '缺少必填字段：buildId' },
@@ -276,7 +333,6 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // 校验 status 值
     const validStatuses = ['building', 'success', 'failed']
     if (status && !validStatuses.includes(status)) {
       return NextResponse.json(
@@ -285,7 +341,6 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // 检查记录是否存在
     const existing = await prisma.buildRecord.findUnique({
       where: { id: numericBuildId },
     })
@@ -297,7 +352,6 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // 3. 更新 BuildRecord
     const updated = await prisma.buildRecord.update({
       where: { id: numericBuildId },
       data: {

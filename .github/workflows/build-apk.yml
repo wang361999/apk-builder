@@ -20,21 +20,47 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Verify project structure
+      - name: Select template
+        id: select_template
+        env:
+          TEMPLATE: ${{ github.event.client_payload.template }}
         run: |
-          echo "=== Checking android directory ==="
-          ls -la android/
+          # 确定使用哪套模板，默认 standard
+          TEMPLATE="${TEMPLATE:-standard}"
+          TEMPLATE_DIR="android/templates/template-${TEMPLATE}"
+          
+          echo "Using template: $TEMPLATE"
+          echo "Template directory: $TEMPLATE_DIR"
+          
+          # 检查模板目录是否存在
+          if [ ! -d "$TEMPLATE_DIR" ]; then
+            echo "ERROR: Template directory $TEMPLATE_DIR does not exist!"
+            echo "Available templates:"
+            ls -la android/templates/
+            exit 1
+          fi
+          
+          echo "=== Template contents ==="
+          find "$TEMPLATE_DIR" -type f | head -30
+          
+          echo "template_dir=$TEMPLATE_DIR" >> $GITHUB_OUTPUT
+          echo "template_name=$TEMPLATE" >> $GITHUB_OUTPUT
+
+      - name: Verify template structure
+        env:
+          TEMPLATE_DIR: ${{ steps.select_template.outputs.template_dir }}
+        run: |
+          echo "=== Checking template: $TEMPLATE_DIR ==="
+          ls -la "$TEMPLATE_DIR/"
           echo "=== Checking gradlew ==="
-          ls -la android/gradlew
-          file android/gradlew
+          ls -la "$TEMPLATE_DIR/gradlew"
+          file "$TEMPLATE_DIR/gradlew"
           echo "=== Checking gradle-wrapper.jar ==="
-          ls -la android/gradle/wrapper/gradle-wrapper.jar
+          ls -la "$TEMPLATE_DIR/gradle/wrapper/gradle-wrapper.jar"
           echo "=== Checking app directory ==="
-          ls -la android/app/
+          ls -la "$TEMPLATE_DIR/app/"
           echo "=== Checking Java files ==="
-          find android/app/src -name "*.java" -type f
-          echo "=== Checking build.gradle ==="
-          cat android/app/build.gradle
+          find "$TEMPLATE_DIR/app/src" -name "*.java" -type f
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -47,11 +73,12 @@ jobs:
 
       - name: Generate keystore
         env:
+          TEMPLATE_DIR: ${{ steps.select_template.outputs.template_dir }}
           KEYSTORE_PASSWORD: ${{ github.event.client_payload.keystore_password || 'android' }}
           KEY_ALIAS: apk-builder
           KEY_PASSWORD: ${{ github.event.client_payload.keystore_password || 'android' }}
         run: |
-          cd android
+          cd "$TEMPLATE_DIR"
           keytool -genkey -v \
             -keystore app/keystore.jks \
             -keyalg RSA \
@@ -64,6 +91,7 @@ jobs:
 
       - name: Prepare Android project
         env:
+          TEMPLATE_DIR: ${{ steps.select_template.outputs.template_dir }}
           APP_URL: ${{ github.event.client_payload.url }}
           APP_NAME: ${{ github.event.client_payload.app_name }}
           PACKAGE_NAME: ${{ github.event.client_payload.package_name }}
@@ -71,7 +99,7 @@ jobs:
           VERCEL_URL: ${{ github.event.client_payload.vercel_url }}
         run: |
           set -x
-          cd android
+          cd "$TEMPLATE_DIR"
 
           # Replace package name in all source files
           NEW_PACKAGE_DIR="${PACKAGE_NAME//.//}"
@@ -92,7 +120,7 @@ jobs:
           echo "=== Files after move ==="
           find app/src/main/java -type f -name "*.java"
 
-          # Update package name in build.gradle (namespace now uses double quotes)
+          # Update package name in build.gradle
           sed -i "s|applicationId \"com.webview.app\"|applicationId \"${PACKAGE_NAME}\"|g" app/build.gradle
           sed -i "s|namespace \"com.webview.app\"|namespace \"${PACKAGE_NAME}\"|g" app/build.gradle
 
@@ -121,21 +149,24 @@ jobs:
 
       - name: Build APK
         env:
+          TEMPLATE_DIR: ${{ steps.select_template.outputs.template_dir }}
           KEYSTORE_PASSWORD: ${{ github.event.client_payload.keystore_password || 'android' }}
           KEY_ALIAS: apk-builder
           KEY_PASSWORD: ${{ github.event.client_payload.keystore_password || 'android' }}
         run: |
-          cd android
+          cd "$TEMPLATE_DIR"
           chmod +x gradlew
           ./gradlew assembleRelease --stacktrace --no-daemon
 
       - name: Get APK info
         id: apk_info
+        env:
+          TEMPLATE_DIR: ${{ steps.select_template.outputs.template_dir }}
         run: |
           echo "=== Looking for APK files ==="
-          find android/app/build/outputs -name "*.apk" -type f || true
+          find "$TEMPLATE_DIR/app/build/outputs" -name "*.apk" -type f || true
           
-          APK_PATH=$(find android/app/build/outputs -name "*.apk" -type f | head -1)
+          APK_PATH=$(find "$TEMPLATE_DIR/app/build/outputs" -name "*.apk" -type f | head -1)
           
           if [ -z "$APK_PATH" ]; then
             echo "ERROR: No APK file found!"
@@ -160,6 +191,7 @@ jobs:
           files: ${{ steps.apk_info.outputs.apk_path }}
           body: |
             Build ID: ${{ github.event.client_payload.build_id }}
+            Template: ${{ steps.select_template.outputs.template_name }}
             URL: ${{ github.event.client_payload.url }}
             App Name: ${{ github.event.client_payload.app_name }}
             Package: ${{ github.event.client_payload.package_name }}
@@ -174,7 +206,6 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
         run: |
           BASE_URL="${VERCEL_URL%/}"
-          # 构造 GitHub Release 的直接下载链接（重定向到实际的 APK 文件）
           APK_DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/build-${BUILD_ID}/${APK_NAME}"
 
           echo "APK download URL: ${APK_DOWNLOAD_URL}"

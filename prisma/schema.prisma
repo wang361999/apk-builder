@@ -28,6 +28,7 @@ model BuildRecord {
   url         String
   appName     String   @map("app_name")
   packageName String   @map("package_name")
+  template    String   @default("standard") @map("template") // "standard" | "fullscreen" | "minimal" | "immersive"
   downloadUrl String?  @map("download_url")
   status      String   @default("building") // "building" | "success" | "failed"
   buildLog    String?  @map("build_log")

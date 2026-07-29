@@ -1,0 +1,160 @@
+name: Build APK
+
+on:
+  repository_dispatch:
+    types: [build_apk]
+
+env:
+  JAVA_VERSION: '17'
+  JAVA_DISTRIBUTION: 'temurin'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Generate keystore
+        env:
+          KEYSTORE_PASSWORD: ${{ github.event.client_payload.keystore_password || 'android' }}
+          KEY_ALIAS: apk-builder
+          KEY_PASSWORD: ${{ github.event.client_payload.keystore_password || 'android' }}
+        run: |
+          cd android
+          keytool -genkey -v \
+            -keystore app/keystore.jks \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -alias apk-builder \
+            -dname "CN=APK Builder, OU=Dev, O=App, L=City, ST=State, C=CN" \
+            -storepass "$KEYSTORE_PASSWORD" \
+            -keypass "$KEY_PASSWORD"
+
+      - name: Prepare Android project
+        env:
+          APP_URL: ${{ github.event.client_payload.url }}
+          APP_NAME: ${{ github.event.client_payload.app_name }}
+          PACKAGE_NAME: ${{ github.event.client_payload.package_name }}
+          BUILD_ID: ${{ github.event.client_payload.build_id }}
+        run: |
+          cd android
+
+          # Replace package name in all source files
+          NEW_PACKAGE_DIR="${PACKAGE_NAME//.//}"
+
+          # Find and replace in source files
+          find app/src/main/java -type f -name "*.java" | while read f; do
+            sed -i "s|com\.webview\.app|${PACKAGE_NAME}|g" "$f"
+          done
+
+          # Rename directory structure
+          mkdir -p "app/src/main/java/${NEW_PACKAGE_DIR}"
+          find app/src/main/java/com/webview/app -type f -exec mv {} "app/src/main/java/${NEW_PACKAGE_DIR}/" \;
+          rm -rf app/src/main/java/com/webview
+
+          # Update package name in build.gradle
+          sed -i "s|applicationId \"com.webview.app\"|applicationId \"${PACKAGE_NAME}\"|g" app/build.gradle
+          sed -i "s|namespace 'com.webview.app'|namespace '${PACKAGE_NAME}'|g" app/build.gradle
+
+          # Update app name in strings.xml
+          sed -i "s|<string name=\"app_name\">WebView App</string>|<string name=\"app_name\">${APP_NAME}</string>|g" app/src/main/res/values/strings.xml
+
+          # Update URL in MainActivity
+          sed -i "s|https://example.com|${APP_URL}|g" "app/src/main/java/${NEW_PACKAGE_DIR}/MainActivity.java"
+
+          # Replace ProGuard rules package name
+          sed -i "s|com\.webview\.app|${PACKAGE_NAME}|g" app/proguard-rules.pro
+
+          # Replace CHECK_UPDATE_URL with the actual vercel_url (passed as vercel_url)
+          VERCEL_URL="${{ github.event.client_payload.vercel_url }}"
+          VERCEL_URL="${VERCEL_URL%/}"
+          sed -i "s|https://your-domain.com|${VERCEL_URL}|g" "app/src/main/java/${NEW_PACKAGE_DIR}/MainActivity.java"
+
+          echo "BUILD_ID=${BUILD_ID}" >> $GITHUB_ENV
+
+      - name: Build APK
+        env:
+          KEYSTORE_PASSWORD: ${{ github.event.client_payload.keystore_password || 'android' }}
+          KEY_ALIAS: apk-builder
+          KEY_PASSWORD: ${{ github.event.client_payload.keystore_password || 'android' }}
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease
+
+      - name: Get APK info
+        id: apk_info
+        run: |
+          APK_PATH=$(find android/app/build/outputs/apk/release/*.apk | head -1)
+          APK_NAME=$(basename "$APK_PATH")
+          APK_SIZE=$(stat -f%z "$APK_PATH" 2>/dev/null || stat -c%s "$APK_PATH")
+          echo "apk_path=${APK_PATH}" >> $GITHUB_OUTPUT
+          echo "apk_name=${APK_NAME}" >> $GITHUB_OUTPUT
+          echo "apk_size=${APK_SIZE}" >> $GITHUB_OUTPUT
+
+      - name: Upload APK to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.event.client_payload.build_id }}
+          name: "Build #${{ github.event.client_payload.build_id }}"
+          files: ${{ steps.apk_info.outputs.apk_path }}
+          body: |
+            Build ID: ${{ github.event.client_payload.build_id }}
+            URL: ${{ github.event.client_payload.url }}
+            App Name: ${{ github.event.client_payload.app_name }}
+            Package: ${{ github.event.client_payload.package_name }}
+
+      - name: Notify backend (success)
+        env:
+          WEBHOOK_SECRET: ${{ github.event.client_payload.webhook_secret }}
+          VERCEL_URL: ${{ github.event.client_payload.vercel_url }}
+          APK_NAME: ${{ steps.apk_info.outputs.apk_name }}
+          APK_SIZE: ${{ steps.apk_info.outputs.apk_size }}
+          BUILD_ID: ${{ github.event.client_payload.build_id }}
+        run: |
+          # 去掉末尾斜杠
+          BASE_URL="${VERCEL_URL%/}"
+          APK_DOWNLOAD_URL="${BASE_URL}/download?id=${BUILD_ID}"
+
+          curl -X PUT "${BASE_URL}/api/build" \
+            -H "Content-Type: application/json" \
+            -H "x-webhook-secret: ${WEBHOOK_SECRET}" \
+            -d '{
+              "buildId": "'"${BUILD_ID}"'",
+              "status": "success",
+              "downloadUrl": "'"${APK_DOWNLOAD_URL}"'",
+              "versionName": "v1.0.0",
+              "fileSize": '"${APK_SIZE}"',
+              "buildLog": "APK built successfully via GitHub Actions"
+            }'
+
+      - name: Notify backend (failure)
+        if: failure()
+        env:
+          WEBHOOK_SECRET: ${{ github.event.client_payload.webhook_secret }}
+          VERCEL_URL: ${{ github.event.client_payload.vercel_url }}
+          BUILD_ID: ${{ github.event.client_payload.build_id }}
+        run: |
+          BASE_URL="${VERCEL_URL%/}"
+
+          curl -X PUT "${BASE_URL}/api/build" \
+            -H "Content-Type: application/json" \
+            -H "x-webhook-secret: ${WEBHOOK_SECRET}" \
+            -d '{
+              "buildId": "'"${BUILD_ID}"'",
+              "status": "failed",
+              "buildLog": "GitHub Actions build failed"
+            }'

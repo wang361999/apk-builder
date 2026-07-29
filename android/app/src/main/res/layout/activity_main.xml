@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:background="#FFFFFF">
 
-    <!-- 主内容区域 -->
+    <!-- 主内容区域：全屏 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -45,7 +45,7 @@
                 android:marqueeRepeatLimit="marquee_forever" />
         </LinearLayout>
 
-        <!-- WebView 区域（带下拉刷新） -->
+        <!-- WebView 区域：全屏，带下拉刷新 -->
         <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
             android:id="@+id/swipe_refresh"
             android:layout_width="match_parent"

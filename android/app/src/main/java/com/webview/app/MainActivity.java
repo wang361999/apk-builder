@@ -81,8 +81,8 @@ public class MainActivity extends AppCompatActivity {
     private boolean enableExitConfirm = false;
     private boolean popupShownToday = false;
 
-    // 网页缩放比例（后台可配置，默认 0.4）
-    private String webScale = "0.4";
+    // 网页缩放比例（后台可配置，默认 1.0 即自适应）
+    private String webScale = "1.0";
 
     // 配置版本号缓存（用于检测后台配置是否变化，变了就强制刷新）
     private String lastConfigVersion = "";
@@ -366,15 +366,16 @@ public class MainActivity extends AppCompatActivity {
             }
 
             // 读取网页缩放比例（后台可配置）
+            // 1.0 = 完全自适应，<1.0 = 缩小显示（适合需要看到更多内容的场景）
             String scale = style.optString("webScale", "");
             if (!scale.isEmpty()) {
                 try {
                     float scaleVal = Float.parseFloat(scale);
-                    if (scaleVal > 0 && scaleVal <= 1.0f) {
+                    if (scaleVal > 0 && scaleVal <= 2.0f) {
                         webScale = scale;
                         Log.d(TAG, "网页缩放比例更新为: " + webScale);
                         // 重新注入 viewport 让缩放立即生效
-                        injectViewportMeta();
+                        injectAdaptiveViewport();
                     }
                 } catch (NumberFormatException e) {
                     Log.e(TAG, "缩放比例格式错误: " + scale, e);
@@ -385,61 +386,33 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 注入 viewport meta 标签，使用后台配置的缩放比例
-    private void injectViewportMeta() {
+    // 注入自适应 viewport
+    // 当 webScale=1.0 时使用标准自适应（width=device-width）
+    // 当 webScale<1.0 时缩小显示（initial-scale < 1，可看到更多内容）
+    // 当 webScale>1.0 时放大显示
+    private void injectAdaptiveViewport() {
         if (webView == null) return;
-        String js = "javascript:(function(){" +
-            "var meta = document.querySelector('meta[name=\"viewport\"]');" +
-            "var content = 'width=1280, initial-scale=" + webScale + ", maximum-scale=5.0, user-scalable=yes';" +
-            "if(meta){meta.setAttribute('content',content);}" +
-            "else{meta=document.createElement('meta');meta.name='viewport';meta.content=content;document.head.appendChild(meta);}" +
-            "})();";
-        webView.evaluateJavascript(js, null);
-    }
+        float scale = 1.0f;
+        try {
+            scale = Float.parseFloat(webScale);
+        } catch (Exception e) {
+            scale = 1.0f;
+        }
 
-    // 持续强制桌面模式：注入 MutationObserver 监听 viewport 变化，被网站修改时自动恢复
-    private void injectDesktopModeEnforcer() {
-        if (webView == null) return;
+        String viewportContent;
+        if (scale >= 0.99f && scale <= 1.01f) {
+            // 标准自适应：网页根据屏幕宽度自动适配
+            viewportContent = "width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes";
+        } else {
+            // 自定义缩放：width=device-width + initial-scale 调整大小
+            viewportContent = "width=device-width, initial-scale=" + webScale + ", maximum-scale=5.0, user-scalable=yes";
+        }
+
         String js = "javascript:(function(){" +
-            // 1. 立即设置 viewport
-            "var content='width=1280, initial-scale=" + webScale + ", maximum-scale=5.0, user-scalable=yes';" +
+            "var content='" + viewportContent + "';" +
             "var meta=document.querySelector('meta[name=\"viewport\"]');" +
             "if(meta){meta.setAttribute('content',content);}" +
             "else{meta=document.createElement('meta');meta.name='viewport';meta.content=content;document.head.appendChild(meta);}" +
-
-            // 2. 用 MutationObserver 持续监控 viewport，被网站修改时立即恢复
-            "if(!window.__desktopViewportGuard){" +
-                "window.__desktopViewportGuard=true;" +
-                "var observer=new MutationObserver(function(){" +
-                    "var m=document.querySelector('meta[name=\"viewport\"]');" +
-                    "if(m){" +
-                        "var c=m.getAttribute('content')||'';" +
-                        "if(c.indexOf('width=1280')===-1){" +
-                            "m.setAttribute('content',content);" +
-                        "}" +
-                    "}" +
-                "});" +
-                "observer.observe(document.head,{childList:true,subtree:true,attributes:true,attributeFilter:['content','name']});" +
-                "observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});" +
-            "}" +
-
-            // 3. 拦截 document.write 和 innerHTML 修改 viewport
-            "var origWrite=document.write.bind(document);" +
-            "document.write=function(html){" +
-                "origWrite(html);" +
-                "var m=document.querySelector('meta[name=\"viewport\"]');" +
-                "if(m){m.setAttribute('content',content);}" +
-            "};" +
-
-            // 4. 隐藏移动端导航栏
-            "var selectors=['header','[class*=\"mobile-header\"]','[class*=\"navbar-mobile\"]','[class*=\"app-header\"]','[id*=\"mobile-header\"]','nav[class*=\"mobile\"]']," +
-            "els=[];" +
-            "selectors.forEach(function(s){document.querySelectorAll(s).forEach(function(e){els.push(e);});});" +
-            "els.forEach(function(e){e.style.display='none';});" +
-
-            // 5. 移除 body 上的 mobile class
-            "document.body.className=document.body.className.replace(/mobile|phone/gi,'');" +
-            "document.documentElement.className=document.documentElement.className.replace(/mobile|phone/gi,'');" +
             "})();";
         webView.evaluateJavascript(js, null);
     }
@@ -705,14 +678,8 @@ public class MainActivity extends AppCompatActivity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
-        // 设置桌面版 User-Agent，强制显示电脑版网页
-        String desktopUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-        settings.setUserAgentString(desktopUA);
-
-        // 强制使用桌面版 viewport，让网页以电脑模式渲染
-        // 很多网站通过屏幕宽度判断是否显示手机版，设为 1280 模拟桌面屏幕
-        settings.setUseWideViewPort(true);
-        settings.setLoadWithOverviewMode(false);
+        // 自适应模式：使用默认 User-Agent，让网页根据屏幕自动适配
+        // 不再强制桌面版 UA，网页会自动选择手机版或桌面版
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -733,19 +700,15 @@ public class MainActivity extends AppCompatActivity {
                 progressBar.setVisibility(View.VISIBLE);
                 swipeRefreshLayout.setRefreshing(false);
 
-                // 页面开始加载时尽早注入桌面 viewport（使用后台配置的缩放比例）
-                String js = "javascript:(function(){" +
-                    "var meta = document.querySelector('meta[name=\"viewport\"]');" +
-                    "if(meta){meta.setAttribute('content','width=1280, initial-scale=" + webScale + ", maximum-scale=5.0, user-scalable=yes');}" +
-                    "})();";
-                view.evaluateJavascript(js, null);
+                // 页面开始加载时注入自适应 viewport
+                injectAdaptiveViewport();
             }
 
             @Override
             public void onPageCommitVisible(WebView view, String url) {
                 super.onPageCommitVisible(view, url);
-                // 页面可见时注入强制桌面模式（包含 MutationObserver 持续监控）
-                injectDesktopModeEnforcer();
+                // 页面可见时注入 viewport
+                injectAdaptiveViewport();
             }
 
             @Override
@@ -754,14 +717,13 @@ public class MainActivity extends AppCompatActivity {
                 progressBar.setVisibility(View.GONE);
                 swipeRefreshLayout.setRefreshing(false);
 
-                // 页面加载完成后注入完整的桌面模式强制器
-                // 包含 MutationObserver 监听 viewport 变化，防止网站 JS 修改 viewport
-                injectDesktopModeEnforcer();
+                // 页面加载完成后注入 viewport
+                injectAdaptiveViewport();
 
-                // 延迟再次注入，防止某些网站在 onload 后异步修改 viewport
+                // 延迟再次注入，防止某些网站异步修改 viewport
                 view.postDelayed(() -> {
                     if (view != null) {
-                        injectDesktopModeEnforcer();
+                        injectAdaptiveViewport();
                     }
                 }, 500);
             }

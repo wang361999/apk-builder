@@ -418,23 +418,24 @@ export default function OperationsPage() {
                               <div className="flex items-center gap-4">
                                 <input
                                   type="range"
-                                  min="0.1"
-                                  max="1.0"
-                                  step="0.05"
-                                  value={s.value || '0.4'}
+                                  min="0.3"
+                                  max="2.0"
+                                  step="0.1"
+                                  value={s.value || '1.0'}
                                   onChange={(e) => updateStyle(s.key, e.target.value)}
                                   className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                                 />
                                 <span className="text-sm font-mono text-gray-700 w-16 text-right">
-                                  {s.value || '0.4'}
+                                  {s.value || '1.0'}
                                 </span>
                               </div>
                               <div className="flex justify-between text-xs text-gray-400">
-                                <span>缩小 0.1</span>
-                                <span>原始 1.0</span>
+                                <span>缩小 0.3</span>
+                                <span>自适应 1.0</span>
+                                <span>放大 2.0</span>
                               </div>
                               <p className="text-xs text-gray-400">
-                                数值越小网页显示越小，推荐 0.3-0.5。用户仍可在 App 内双指缩放。
+                                1.0 = 自适应（推荐），网页根据屏幕自动适配。小于 1 缩小显示，大于 1 放大显示。用户仍可在 App 内双指缩放。
                               </p>
                             </div>
                           ) : (

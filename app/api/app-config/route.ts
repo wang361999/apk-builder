@@ -90,7 +90,7 @@ export async function GET() {
         statusBarColor: styleMap.statusBarColor ?? '#1A1A2E',
         appName: styleMap.appName ?? '我的应用',
         loadingText: styleMap.loadingText ?? '加载中...',
-        webScale: styleMap.webScale ?? '0.4',
+        webScale: styleMap.webScale ?? '1.0',
       },
 
       announcement: {

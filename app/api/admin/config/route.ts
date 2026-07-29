@@ -65,6 +65,20 @@ export async function GET() {
     // build_webhook_secret 只返回是否已设置（系统自动生成）
     result.build_webhook_secret_set = result.build_webhook_secret ? 'true' : 'false'
 
+    // 数据库持久化状态检查
+    const tursoUrl = process.env.TURSO_DATABASE_URL
+    const tursoToken = process.env.TURSO_AUTH_TOKEN
+    if (tursoUrl && tursoToken) {
+      result.database_status = 'turso'
+      result.database_message = 'Turso 云数据库（数据持久化）'
+    } else if (process.env.NODE_ENV === 'production') {
+      result.database_status = 'warning'
+      result.database_message = '未配置 Turso，数据不会持久化！请在 Vercel 环境变量中配置 TURSO_DATABASE_URL 和 TURSO_AUTH_TOKEN'
+    } else {
+      result.database_status = 'sqlite'
+      result.database_message = '本地 SQLite（开发环境）'
+    }
+
     return NextResponse.json(result)
   } catch (error) {
     console.error('GET /api/admin/config 出错:', error)

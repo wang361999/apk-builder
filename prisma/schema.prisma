@@ -5,6 +5,9 @@ generator client {
 
 datasource db {
   provider = "sqlite"
+  // 生产环境使用 Turso adapter 连接（在 lib/prisma.ts 中处理）
+  // 这里仅用于 prisma generate，需要一个有效的 URL
+  // 优先使用 TURSO_DATABASE_URL，其次用本地 SQLite
   url      = env("DATABASE_URL")
 }
 

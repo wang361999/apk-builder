@@ -397,6 +397,53 @@ public class MainActivity extends AppCompatActivity {
         webView.evaluateJavascript(js, null);
     }
 
+    // 持续强制桌面模式：注入 MutationObserver 监听 viewport 变化，被网站修改时自动恢复
+    private void injectDesktopModeEnforcer() {
+        if (webView == null) return;
+        String js = "javascript:(function(){" +
+            // 1. 立即设置 viewport
+            "var content='width=1280, initial-scale=" + webScale + ", maximum-scale=5.0, user-scalable=yes';" +
+            "var meta=document.querySelector('meta[name=\"viewport\"]');" +
+            "if(meta){meta.setAttribute('content',content);}" +
+            "else{meta=document.createElement('meta');meta.name='viewport';meta.content=content;document.head.appendChild(meta);}" +
+
+            // 2. 用 MutationObserver 持续监控 viewport，被网站修改时立即恢复
+            "if(!window.__desktopViewportGuard){" +
+                "window.__desktopViewportGuard=true;" +
+                "var observer=new MutationObserver(function(){" +
+                    "var m=document.querySelector('meta[name=\"viewport\"]');" +
+                    "if(m){" +
+                        "var c=m.getAttribute('content')||'';" +
+                        "if(c.indexOf('width=1280')===-1){" +
+                            "m.setAttribute('content',content);" +
+                        "}" +
+                    "}" +
+                "});" +
+                "observer.observe(document.head,{childList:true,subtree:true,attributes:true,attributeFilter:['content','name']});" +
+                "observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});" +
+            "}" +
+
+            // 3. 拦截 document.write 和 innerHTML 修改 viewport
+            "var origWrite=document.write.bind(document);" +
+            "document.write=function(html){" +
+                "origWrite(html);" +
+                "var m=document.querySelector('meta[name=\"viewport\"]');" +
+                "if(m){m.setAttribute('content',content);}" +
+            "};" +
+
+            // 4. 隐藏移动端导航栏
+            "var selectors=['header','[class*=\"mobile-header\"]','[class*=\"navbar-mobile\"]','[class*=\"app-header\"]','[id*=\"mobile-header\"]','nav[class*=\"mobile\"]']," +
+            "els=[];" +
+            "selectors.forEach(function(s){document.querySelectorAll(s).forEach(function(e){els.push(e);});});" +
+            "els.forEach(function(e){e.style.display='none';});" +
+
+            // 5. 移除 body 上的 mobile class
+            "document.body.className=document.body.className.replace(/mobile|phone/gi,'');" +
+            "document.documentElement.className=document.documentElement.className.replace(/mobile|phone/gi,'');" +
+            "})();";
+        webView.evaluateJavascript(js, null);
+    }
+
     private int parseColor(String colorStr) {
         try {
             return Color.parseColor(colorStr);
@@ -695,27 +742,28 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
+            public void onPageCommitVisible(WebView view, String url) {
+                super.onPageCommitVisible(view, url);
+                // 页面可见时注入强制桌面模式（包含 MutationObserver 持续监控）
+                injectDesktopModeEnforcer();
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 progressBar.setVisibility(View.GONE);
                 swipeRefreshLayout.setRefreshing(false);
 
-                // 页面加载完成后注入 JS：设置桌面 viewport + 隐藏网页自带的移动端导航栏
-                String js = "javascript:(function(){" +
-                    // 强制设置桌面版 viewport（使用后台配置的缩放比例）
-                    "var meta = document.querySelector('meta[name=\"viewport\"]');" +
-                    "if(meta){meta.setAttribute('content','width=1280, initial-scale=" + webScale + ", maximum-scale=5.0, user-scalable=yes');}" +
-                    "else{meta=document.createElement('meta');meta.name='viewport';meta.content='width=1280, initial-scale=" + webScale + ", maximum-scale=5.0, user-scalable=yes';document.head.appendChild(meta);}" +
-                    // 隐藏常见的移动端导航栏/header
-                    "var selectors=['header','[class*=\"mobile-header\"]','[class*=\"navbar-mobile\"]','[class*=\"app-header\"]','[id*=\"mobile-header\"]','nav[class*=\"mobile\"]']," +
-                    "els=[];" +
-                    "selectors.forEach(function(s){document.querySelectorAll(s).forEach(function(e){els.push(e);});});" +
-                    "els.forEach(function(e){e.style.display='none';});" +
-                    // 移除 body 上的 mobile class
-                    "document.body.className=document.body.className.replace(/mobile|phone/gi,'');" +
-                    "document.documentElement.className=document.documentElement.className.replace(/mobile|phone/gi,'');" +
-                    "})();";
-                view.evaluateJavascript(js, null);
+                // 页面加载完成后注入完整的桌面模式强制器
+                // 包含 MutationObserver 监听 viewport 变化，防止网站 JS 修改 viewport
+                injectDesktopModeEnforcer();
+
+                // 延迟再次注入，防止某些网站在 onload 后异步修改 viewport
+                view.postDelayed(() -> {
+                    if (view != null) {
+                        injectDesktopModeEnforcer();
+                    }
+                }, 500);
             }
         });
 

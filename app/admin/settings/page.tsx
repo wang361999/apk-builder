@@ -12,6 +12,8 @@ interface ConfigData {
   github_branch: string
   vercel_url: string
   build_webhook_secret_set: string
+  database_status: string
+  database_message: string
 }
 
 interface CheckResult {
@@ -39,6 +41,8 @@ export default function AdminSettingsPage() {
   const [tokenSet, setTokenSet] = useState(false)
   const [tokenMasked, setTokenMasked] = useState('')
   const [webhookSet, setWebhookSet] = useState(false)
+  const [dbStatus, setDbStatus] = useState('')
+  const [dbMessage, setDbMessage] = useState('')
 
   // 是否显示明文 token
   const [showToken, setShowToken] = useState(false)
@@ -75,6 +79,8 @@ export default function AdminSettingsPage() {
           setTokenSet(data.github_token_set === 'true')
           setTokenMasked(data.github_token_masked || '')
           setWebhookSet(data.build_webhook_secret_set === 'true')
+          setDbStatus(data.database_status || '')
+          setDbMessage(data.database_message || '')
         }
       } catch (err) {
         console.error('加载配置失败:', err)
@@ -127,6 +133,8 @@ export default function AdminSettingsPage() {
           setTokenSet(newData.github_token_set === 'true')
           setTokenMasked(newData.github_token_masked || '')
           setWebhookSet(newData.build_webhook_secret_set === 'true')
+          setDbStatus(newData.database_status || '')
+          setDbMessage(newData.database_message || '')
         }
       } else {
         setMessage({ type: 'error', text: data.error || '保存失败' })
@@ -341,6 +349,67 @@ export default function AdminSettingsPage() {
                     ✓ 自动生成
                   </span>
                 </div>
+              </div>
+            </div>
+
+            {/* 数据库状态 */}
+            <div className={`rounded-xl border shadow-sm ${
+              dbStatus === 'warning'
+                ? 'bg-red-50 border-red-200'
+                : dbStatus === 'turso'
+                ? 'bg-white border-gray-200'
+                : 'bg-white border-gray-200'
+            }`}>
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                  <span>💾</span> 数据库状态
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  数据库持久化配置，影响数据是否会因重新部署而丢失
+                </p>
+              </div>
+
+              <div className="p-6">
+                {dbStatus === 'turso' && (
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs bg-green-100 text-green-700">
+                      ✓ Turso 云数据库
+                    </span>
+                    <p className="text-sm text-gray-600">{dbMessage}</p>
+                  </div>
+                )}
+                {dbStatus === 'warning' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs bg-red-100 text-red-700">
+                        ✗ 数据不持久
+                      </span>
+                      <p className="text-sm text-red-600 font-medium">{dbMessage}</p>
+                    </div>
+                    <div className="bg-white rounded-lg border border-red-200 p-4">
+                      <p className="text-sm text-gray-700 font-medium mb-2">配置方法：</p>
+                      <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
+                        <li>访问 <a href="https://turso.tech" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">turso.tech</a> 注册并创建数据库</li>
+                        <li>获取 Database URL（格式：libsql://xxx.turso.io）和 Auth Token</li>
+                        <li>在 Vercel 后台 Settings → Environment Variables 添加：
+                          <br />
+                          <code className="text-xs bg-gray-100 px-2 py-1 rounded mt-1 inline-block">TURSO_DATABASE_URL</code>
+                          <br />
+                          <code className="text-xs bg-gray-100 px-2 py-1 rounded mt-1 inline-block">TURSO_AUTH_TOKEN</code>
+                        </li>
+                        <li>重新部署即可，数据将永久保存</li>
+                      </ol>
+                    </div>
+                  </div>
+                )}
+                {dbStatus === 'sqlite' && (
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs bg-blue-100 text-blue-700">
+                      本地 SQLite
+                    </span>
+                    <p className="text-sm text-gray-600">{dbMessage}</p>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -34,6 +34,17 @@ function randomString(length) {
   return result
 }
 
+async function execute(sql, args = []) {
+  try {
+    return await db.execute({ sql, args })
+  } catch (err) {
+    if (!err.message?.includes('already exists')) {
+      console.log(`[turso-init] SQL 执行跳过: ${err.message?.split('\n')[0] || ''}`)
+    }
+    return null
+  }
+}
+
 async function init() {
   console.log('[turso-init] 开始初始化 Turso 数据库...')
 
@@ -80,13 +91,46 @@ async function init() {
       value TEXT NOT NULL,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
+    // 广告配置表
+    `CREATE TABLE IF NOT EXISTS "ad_config" (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL UNIQUE,
+      enabled BOOLEAN NOT NULL DEFAULT 0,
+      image_url TEXT NOT NULL DEFAULT '',
+      link_url TEXT NOT NULL DEFAULT '',
+      duration INTEGER NOT NULL DEFAULT 3,
+      show_times_per_day INTEGER NOT NULL DEFAULT 1,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    // 功能开关表
+    `CREATE TABLE IF NOT EXISTS "feature_flag" (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT NOT NULL UNIQUE,
+      value TEXT NOT NULL DEFAULT 'true',
+      description TEXT NOT NULL DEFAULT '',
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    // 样式配置表
+    `CREATE TABLE IF NOT EXISTS "style_config" (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT NOT NULL UNIQUE,
+      value TEXT NOT NULL DEFAULT '',
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    // 公告表
+    `CREATE TABLE IF NOT EXISTS "announcement" (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      enabled BOOLEAN NOT NULL DEFAULT 0,
+      text TEXT NOT NULL DEFAULT '',
+      link_url TEXT NOT NULL DEFAULT '',
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
   ]
 
   for (const sql of tables) {
     try {
       await db.execute(sql)
     } catch (err) {
-      // 表/索引已存在不算错误
       if (!err.message?.includes('already exists')) {
         console.log(`[turso-init] SQL 执行跳过: ${err.message?.split('\n')[0] || ''}`)
       }
@@ -139,7 +183,7 @@ async function init() {
     console.log(`[turso-init] 版本创建跳过: ${err.message?.split('\n')[0] || ''}`)
   }
 
-  // 4. 自动生成 Webhook Secret（如果不存在）
+  // 4. 自动生成 Webhook Secret
   try {
     const existingSecret = await db.execute({
       sql: 'SELECT id FROM "system_config" WHERE key = ?',
@@ -158,6 +202,98 @@ async function init() {
     }
   } catch (err) {
     console.log(`[turso-init] Webhook Secret 创建跳过: ${err.message?.split('\n')[0] || ''}`)
+  }
+
+  // 5. 初始化广告配置（3 种类型，默认关闭）
+  const adTypes = [
+    { type: 'splash', desc: '启动页广告' },
+    { type: 'popup', desc: '弹窗广告' },
+    { type: 'banner', desc: '底部横幅广告' },
+  ]
+  for (const ad of adTypes) {
+    try {
+      const existing = await db.execute({
+        sql: 'SELECT id FROM "ad_config" WHERE type = ?',
+        args: [ad.type],
+      })
+      if (existing.rows.length === 0) {
+        await db.execute({
+          sql: 'INSERT INTO "ad_config" (type, enabled, image_url, link_url, duration, show_times_per_day) VALUES (?, 0, ?, ?, 3, 1)',
+          args: [ad.type, '', ''],
+        })
+        console.log(`[turso-init] 广告配置 ${ad.desc} 创建 ✓`)
+      }
+    } catch (err) {
+      console.log(`[turso-init] 广告 ${ad.type} 跳过: ${err.message?.split('\n')[0] || ''}`)
+    }
+  }
+
+  // 6. 初始化功能开关
+  const features = [
+    { key: 'enablePullToRefresh', value: 'true', desc: '下拉刷新' },
+    { key: 'enableShare', value: 'true', desc: '分享功能' },
+    { key: 'enableDarkMode', value: 'false', desc: '深色模式' },
+    { key: 'enableFileDownload', value: 'true', desc: '文件下载' },
+    { key: 'enableExitConfirm', value: 'false', desc: '返回键退出确认' },
+  ]
+  for (const f of features) {
+    try {
+      const existing = await db.execute({
+        sql: 'SELECT id FROM "feature_flag" WHERE key = ?',
+        args: [f.key],
+      })
+      if (existing.rows.length === 0) {
+        await db.execute({
+          sql: 'INSERT INTO "feature_flag" (key, value, description) VALUES (?, ?, ?)',
+          args: [f.key, f.value, f.desc],
+        })
+        console.log(`[turso-init] 功能开关 ${f.key} 创建 ✓`)
+      }
+    } catch (err) {
+      console.log(`[turso-init] 功能开关 ${f.key} 跳过: ${err.message?.split('\n')[0] || ''}`)
+    }
+  }
+
+  // 7. 初始化样式配置
+  const styles = [
+    { key: 'themeColor', value: '#3B82F6' },
+    { key: 'statusBarColor', value: '#1A1A2E' },
+    { key: 'appName', value: '我的应用' },
+    { key: 'loadingText', value: '加载中...' },
+  ]
+  for (const s of styles) {
+    try {
+      const existing = await db.execute({
+        sql: 'SELECT id FROM "style_config" WHERE key = ?',
+        args: [s.key],
+      })
+      if (existing.rows.length === 0) {
+        await db.execute({
+          sql: 'INSERT INTO "style_config" (key, value) VALUES (?, ?)',
+          args: [s.key, s.value],
+        })
+        console.log(`[turso-init] 样式配置 ${s.key} 创建 ✓`)
+      }
+    } catch (err) {
+      console.log(`[turso-init] 样式 ${s.key} 跳过: ${err.message?.split('\n')[0] || ''}`)
+    }
+  }
+
+  // 8. 初始化公告
+  try {
+    const existing = await db.execute({
+      sql: 'SELECT id FROM "announcement" LIMIT 1',
+      args: [],
+    })
+    if (existing.rows.length === 0) {
+      await db.execute({
+        sql: 'INSERT INTO "announcement" (enabled, text, link_url) VALUES (0, ?, ?)',
+        args: ['欢迎使用本应用', ''],
+      })
+      console.log('[turso-init] 默认公告创建 ✓')
+    }
+  } catch (err) {
+    console.log(`[turso-init] 公告创建跳过: ${err.message?.split('\n')[0] || ''}`)
   }
 
   console.log('[turso-init] 初始化完成')

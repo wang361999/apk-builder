@@ -63,3 +63,49 @@ model SystemConfig {
 
   @@map("system_config")
 }
+
+// 广告配置
+model AdConfig {
+  id             Int      @id @default(autoincrement())
+  type           String   @unique // "splash" | "popup" | "banner"
+  enabled        Boolean  @default(false)
+  imageUrl       String   @default("") @map("image_url")
+  linkUrl        String   @default("") @map("link_url")
+  duration       Int      @default(3) // 显示时长（秒），仅 splash 用
+  showTimesPerDay Int     @default(1) @map("show_times_per_day") // 每天显示次数，仅 popup 用
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("ad_config")
+}
+
+// 功能开关
+model FeatureFlag {
+  id          Int      @id @default(autoincrement())
+  key         String   @unique
+  value       String   @default("true") // "true" | "false"
+  description String   @default("")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("feature_flag")
+}
+
+// 样式配置
+model StyleConfig {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String   @default("")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("style_config")
+}
+
+// 公告
+model Announcement {
+  id        Int      @id @default(autoincrement())
+  enabled   Boolean  @default(false)
+  text      String   @default("")
+  linkUrl   String   @default("") @map("link_url")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("announcement")
+}

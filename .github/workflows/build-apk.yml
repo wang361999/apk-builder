@@ -99,13 +99,13 @@ jobs:
           # Update app name in strings.xml
           sed -i "s|<string name=\"app_name\">WebView App</string>|<string name=\"app_name\">${APP_NAME}</string>|g" app/src/main/res/values/strings.xml
 
-          # Update URL in MainActivity
+          # Update URL in MainActivity (user's website URL)
           sed -i "s|https://example.com|${APP_URL}|g" "app/src/main/java/${NEW_PACKAGE_DIR}/MainActivity.java"
 
           # Replace ProGuard rules package name
           sed -i "s|com\.webview\.app|${PACKAGE_NAME}|g" app/proguard-rules.pro
 
-          # Replace CHECK_UPDATE_URL with the actual vercel_url
+          # Replace CONFIG_URL with the actual vercel_url (remote config endpoint)
           CLEAN_VERCEL_URL="${VERCEL_URL%/}"
           sed -i "s|https://your-domain.com|${CLEAN_VERCEL_URL}|g" "app/src/main/java/${NEW_PACKAGE_DIR}/MainActivity.java"
 

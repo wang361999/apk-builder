@@ -13,6 +13,7 @@ interface AdminLayoutProps {
 const NAV_ITEMS = [
   { href: '/admin', label: '仪表盘', icon: '📊' },
   { href: '/admin/versions', label: '版本管理', icon: '📱' },
+  { href: '/admin/operations', label: '运营管理', icon: '🎛️' },
   { href: '/admin/records', label: '构建记录', icon: '📋' },
   { href: '/admin/settings', label: '系统设置', icon: '⚙️' },
   { href: '/admin/change-password', label: '修改密码', icon: '🔑' },

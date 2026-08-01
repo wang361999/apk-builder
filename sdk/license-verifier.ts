@@ -1,5 +1,5 @@
 /**
- * ET Studio 授权验证 SDK (TypeScript 版本
+ * ET Studio 授权验证
  *
  * 供 TypeScript / Next.js 项目嵌入使用。
  *

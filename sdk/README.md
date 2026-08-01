@@ -5,7 +5,7 @@
 - `license-verifier.ts` —— TypeScript / Next.js 项目使用
 - `license-verifier.js` —— Node.js / CommonJS 项目使用
 
-两个版本功能完全一致，本文档同时适用于 TS 与 JS 项目。TypeScript 项目可享受类型提示；Node.js 项目直接 `require` 即可。
+两个版本功能完全一致，本文档同时适用于 TS 与 JS 项目。TeScript 项目可享受类型提示；Node.js 项目直接 `require` 即可。
 
 ---
 

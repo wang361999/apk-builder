@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vercel 双账号管理面板</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0f1117;
+      --card-bg: #1a1d27;
+      --card-border: #2a2d3a;
+      --text: #e4e6eb;
+      --text-dim: #8b8fa3;
+      --green: #22c55e;
+      --yellow: #eab308;
+    --red: #ef4444;
+    --gray: #6b7280;
+    --blue: #3b82f6;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 20px;
+  }
+
+  /* ===== 登录页 ===== */
+  #login-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+  }
+  .login-box {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 40px;
+    width: 100%;
+    max-width: 360px;
+    text-align: center;
+  }
+  .login-box h1 { font-size: 22px; margin-bottom: 8px; }
+  .login-box p { font-size: 13px; color: var(--text-dim); margin-bottom: 24px; }
+  .login-box input {
+    width: 100%;
+    padding: 12px 16px;
+    background: var(--bg);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    color: var(--text);
+    font-size: 14px;
+    margin-bottom: 16px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .login-box input:focus { border-color: var(--blue); }
+  .login-box button {
+    width: 100%;
+    padding: 12px;
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .login-box button:hover { opacity: 0.9; }
+  .login-error {
+    color: var(--red);
+    font-size: 13px;
+    margin-bottom: 12px;
+    display: none;
+  }
+
+  /* ===== 主面板 ===== */
+  #dashboard { display: none; max-width: 960px; margin: 0 auto; }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .header h1 { font-size: 20px; }
+  .header-actions { display: flex; gap: 12px; align-items: center; }
+  .refresh-info { font-size: 12px; color: var(--text-dim); }
+  .btn-refresh, .btn-logout {
+    padding: 8px 14px;
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    background: var(--card-bg);
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .btn-refresh:hover, .btn-logout:hover { border-color: var(--blue); }
+
+  /* ===== 账号卡片 ===== */
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  @media (max-width: 700px) { .cards { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    padding: 20px;
+  }
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .card-title { font-size: 16px; font-weight: 600; }
+  .card-tag {
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  /* 状态标签颜色 */
+  .state-ready { background: rgba(34,197,94,0.15); color: var(--green); }
+  .state-building { background: rgba(234,179,8,0.15); color: var(--yellow); }
+  .state-error { background: rgba(239,68,68,0.15); color: var(--red); }
+  .state-queued, .state-other { background: rgba(107,114,128,0.15); color: var(--gray); }
+
+  /* 状态行 */
+  .status-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--card-border);
+    font-size: 13px;
+  }
+  .status-row:last-of-type { border-bottom: none; }
+  .status-label { color: var(--text-dim); }
+  .status-value { color: var(--text); text-align: right; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* 健康圆点 */
+  .health-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .dot-green { background: var(--green); }
+  .dot-red { background: var(--red); }
+  .dot-gray { background: var(--gray); }
+
+  /* 构建中动画 */
+  .building-pulse { animation: pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+  /* 部署按钮 */
+  .deploy-btn {
+    width: 100%;
+    margin-top: 16px;
+    padding: 12px;
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .deploy-btn:hover:not(:disabled) { opacity: 0.9; }
+  .deploy-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .deploy-btn.deploying { background: var(--yellow); }
+
+  /* 启停按钮 */
+  .toggle-row { display: flex; gap: 10px; margin-top: 10px; }
+  .toggle-btn {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .toggle-btn:hover:not(:disabled) { opacity: 0.9; }
+  .toggle-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .btn-pause { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+  .btn-resume { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+  .toggle-btn.toggling { opacity: 0.5; }
+
+  /* 暂停状态卡片 */
+  .card.paused-card { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.03); }
+
+  /* 部署结果提示 */
+  .deploy-result {
+    margin-top: 12px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    display: none;
+  }
+  .result-success { background: rgba(34,197,94,0.1); color: var(--green); border: 1px solid rgba(34,197,94,0.2); }
+  .result-error { background: rgba(239,68,68,0.1); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
+
+  /* ===== 切换指引 ===== */
+  .guide {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    padding: 20px;
+  }
+  .guide h2 { font-size: 15px; margin-bottom: 12px; }
+  .guide ol { padding-left: 20px; }
+  .guide li { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; line-height: 1.6; }
+  .guide li strong { color: var(--text); }
+  .guide code {
+    background: var(--bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--blue);
+  }
+
+  /* 加载状态 */
+  .loading-skeleton {
+    display: inline-block;
+    width: 60px;
+    height: 14px;
+    background: var(--card-border);
+    border-radius: 4px;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  .error-text { color: var(--red); font-size: 12px; }
+  </style>
+</head>
+<body>
+
+<!-- ===== 登录页 ===== -->
+<div id="login-page">
+  <div class="login-box">
+    <h1>Vercel 管理面板</h1>
+    <p>请输入面板访问密码</p>
+    <div class="login-error" id="login-error">密码错误，请重试</div>
+    <input type="password" id="password-input" placeholder="面板密码" autofocus>
+    <button id="login-btn">登录</button>
+  </div>
+</div>
+
+<!-- ===== 主面板 ===== -->
+<div id="dashboard">
+  <div class="header">
+    <h1>Vercel 双账号管理面板</h1>
+    <div class="header-actions">
+      <span class="refresh-info" id="refresh-info">--</span>
+      <button class="btn-refresh" id="btn-refresh">刷新</button>
+      <button class="btn-logout" id="btn-logout">退出</button>
+    </div>
+  </div>
+
+  <div class="cards" id="cards">
+    <!-- 账号 A 卡片 -->
+    <div class="card" id="card-A">
+      <div class="card-header">
+        <span class="card-title" id="name-A">账号 A</span>
+        <span class="card-tag state-other" id="state-tag-A">加载中</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">部署状态</span>
+        <span class="status-value" id="deploy-state-A"><span class="loading-skeleton"></span></span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">最新 Commit</span>
+        <span class="status-value" id="commit-A"><span class="loading-skeleton"></span></span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">部署时间</span>
+        <span class="status-value" id="created-A"><span class="loading-skeleton"></span></span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">站点健康</span>
+        <span class="status-value" id="health-A"><span class="loading-skeleton"></span></span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Deploy Hook</span>
+        <span class="status-value" id="hook-A"><span class="loading-skeleton"></span></span>
+      </div>
+      <button class="deploy-btn" id="deploy-A" disabled>一键部署</button>
+      <div class="toggle-row">
+        <button class="toggle-btn btn-pause" id="pause-A" disabled>暂停服务</button>
+        <button class="toggle-btn btn-resume" id="resume-A" disabled>恢复服务</button>
+      </div>
+      <div class="deploy-result" id="result-A"></div>
+    </div>
+
+    <!-- 账号 B 卡片 -->
+    <div class="card" id="card-B">
+      <div class="card-header">
+        <span class="card-title" id="name-B">账号 B</span>
+        <span class="card-tag state-other" id="state-tag-B">加载中</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">部署状态</span>
+        <span class="status-value" id="deploy-state-B"><span class="loading-skeleton"></span></span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">最新 Commit</span>
+        <span class="status-value" id="commit-B"><span class="loading-skeleton"></span></span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">部署时间</span>
+        <span class="status-value" id="created-B"><span class="loading-skeleton"></span></span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">站点健康</span>
+        <span class="status-value" id="health-B"><span class="loading-skeleton"></span></span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Deploy Hook</span>
+        <span class="status-value" id="hook-B"><span class="loading-skeleton"></span></span>
+      </div>
+      <button class="deploy-btn" id="deploy-B" disabled>一键部署</button>
+      <div class="toggle-row">
+        <button class="toggle-btn btn-pause" id="pause-B" disabled>暂停服务</button>
+        <button class="toggle-btn btn-resume" id="resume-B" disabled>恢复服务</button>
+      </div>
+      <div class="deploy-result" id="result-B"></div>
+    </div>
+  </div>
+
+  <!-- 切换指引 -->
+  <div class="guide">
+    <h2>账号轮替切换指引</h2>
+    <ol>
+      <li>确认目标账号的 Deploy Hook 已配置（上方卡片显示"已配置"）</li>
+      <li>在目标账号 Vercel 后台绑定域名（<code>Settings → Domains</code>）</li>
+      <li>在旧账号 Vercel 后台解绑域名（<code>Settings → Domains → Remove</code>）</li>
+      <li>点击目标账号的"一键部署"按钮，拉取最新代码重新构建</li>
+      <li>等待 2-5 分钟构建完成，确认站点健康变为 <span class="health-dot dot-green"></span>在线</li>
+      <li>两个账号共用同一个数据库，切换不影响数据</li>
+    </ol>
+  </div>
+</div>
+
+<script>
+// ===== 全局状态 =====
+let panelPassword = localStorage.getItem('panel_password') || '';
+let refreshTimer = null;
+let deploying = { A: false, B: false };
+let toggling = { A: false, B: false };
+
+// ===== API 调用 =====
+async function apiGet(path) {
+  const res = await fetch(path, {
+    headers: { 'X-Panel-Password': panelPassword },
+  });
+  if (res.status === 401) {
+    showLogin();
+    throw new Error('未授权');
+  }
+  return res.json();
+}
+
+async function apiPost(path, body) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Panel-Password': panelPassword,
+    },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) {
+    showLogin();
+    throw new Error('未授权');
+  }
+  return res.json();
+}
+
+// ===== 页面切换 =====
+function showLogin() {
+  document.getElementById('login-page').style.display = 'flex';
+  document.getElementById('dashboard').style.display = 'none';
+  localStorage.removeItem('panel_password');
+  panelPassword = '';
+  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+}
+
+function showDashboard() {
+  document.getElementById('login-page').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  fetchStatus();
+  // 每 30 秒自动刷新
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(fetchStatus, 30000);
+}
+
+// ===== 登录 =====
+document.getElementById('login-btn').addEventListener('click', async () => {
+  const input = document.getElementById('password-input');
+  panelPassword = input.value;
+  try {
+    // 尝试请求 status 验证密码
+    await apiGet('/api/status');
+    localStorage.setItem('panel_password', panelPassword);
+    document.getElementById('login-error').style.display = 'none';
+    input.value = '';
+    showDashboard();
+  } catch {
+    document.getElementById('login-error').style.display = 'block';
+    panelPassword = '';
+  }
+});
+
+document.getElementById('password-input').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') document.getElementById('login-btn').click();
+});
+
+// ===== 退出 =====
+document.getElementById('btn-logout').addEventListener('click', showLogin);
+
+// ===== 手动刷新 =====
+document.getElementById('btn-refresh').addEventListener('click', fetchStatus);
+
+// ===== 获取状态 =====
+async function fetchStatus() {
+  try {
+    const data = await apiGet('/api/status');
+    renderAccount('A', data.accountA);
+    renderAccount('B', data.accountB);
+    document.getElementById('refresh-info').textContent =
+      '更新于 ' + new Date(data.timestamp).toLocaleTimeString('zh-CN');
+  } catch {
+    document.getElementById('refresh-info').textContent = '获取失败';
+  }
+}
+
+// ===== 渲染账号卡片 =====
+function renderAccount(account, status) {
+  const setName = (id, text) => document.getElementById(id).textContent = text;
+  const setHTML = (id, html) => document.getElementById(id).innerHTML = html;
+
+  // 名称
+  setName(`name-${account}`, status.name);
+
+  // 配置状态
+  if (!status.configured) {
+    setHTML(`state-tag-${account}`, `<span class="card-tag state-error">未配置</span>`);
+    setHTML(`deploy-state-${account}`, '<span class="error-text">' + (status.error || '缺少环境变量') + '</span>');
+    setHTML(`commit-${account}`, '-');
+    setHTML(`created-${account}`, '-');
+    setHTML(`health-${account}`, '-');
+    setHTML(`hook-${account}`, '<span class="error-text">未配置</span>');
+    document.getElementById(`deploy-${account}`).disabled = true;
+    document.getElementById(`pause-${account}`).disabled = true;
+    document.getElementById(`resume-${account}`).disabled = true;
+    return;
+  }
+
+  // 暂停状态
+  const cardEl = document.getElementById(`card-${account}`);
+  if (status.paused === true) {
+    cardEl.classList.add('paused-card');
+    const tagEl = document.getElementById(`state-tag-${account}`);
+    tagEl.className = 'card-tag state-error';
+    tagEl.textContent = '已暂停';
+    setHTML(`deploy-state-${account}`, '<span style="color:var(--red)">已暂停</span>');
+    setHTML(`health-${account}`, '<span class="health-dot dot-red"></span>已暂停 (503)');
+  } else {
+    cardEl.classList.remove('paused-card');
+
+  // 部署状态标签
+  const stateClass = getStateClass(status.deployState);
+  const stateLabel = status.deployStateLabel || '未知';
+  const tagEl = document.getElementById(`state-tag-${account}`);
+  tagEl.className = 'card-tag ' + stateClass;
+  tagEl.textContent = stateLabel;
+  if (status.deployState === 'BUILDING') {
+    tagEl.classList.add('building-pulse');
+  }
+
+  // 部署状态
+  setHTML(`deploy-state-${account}`, escapeHtml(stateLabel));
+
+  // Commit
+  setHTML(`commit-${account}`, status.commitMessage
+    ? escapeHtml(status.commitMessage.slice(0, 50))
+    : '<span style="color:var(--text-dim)">无</span>');
+
+  // 部署时间
+  setHTML(`created-${account}`, status.createdAt
+    ? formatTime(status.createdAt)
+    : '<span style="color:var(--text-dim)">无记录</span>');
+
+  // 站点健康
+  if (status.siteOnline === true) {
+    setHTML(`health-${account}`, `<span class="health-dot dot-green"></span>在线 (${status.siteStatusCode})`);
+  } else if (status.siteOnline === false) {
+    setHTML(`health-${account}`, `<span class="health-dot dot-red"></span>离线${status.siteStatusCode ? ' (' + status.siteStatusCode + ')' : ''}`);
+  } else {
+    setHTML(`health-${account}`, `<span class="health-dot dot-gray"></span>未知`);
+  }
+
+  // Deploy Hook
+  setHTML(`hook-${account}`, status.hookConfigured
+    ? '<span style="color:var(--green)">已配置</span>'
+    : '<span class="error-text">未配置</span>');
+
+  // 错误信息
+  if (status.error) {
+    setHTML(`deploy-state-${account}`, '<span class="error-text">' + escapeHtml(status.error) + '</span>');
+  }
+
+  // 部署按钮
+  const btn = document.getElementById(`deploy-${account}`);
+  btn.disabled = !status.hookConfigured || deploying[account];
+  btn.textContent = deploying[account] ? '部署中...' : '一键部署';
+
+  // 启停按钮
+  const pauseBtn = document.getElementById(`pause-${account}`);
+  const resumeBtn = document.getElementById(`resume-${account}`);
+  if (status.paused === true) {
+    pauseBtn.disabled = true;
+    resumeBtn.disabled = toggling[account];
+  } else {
+    pauseBtn.disabled = toggling[account];
+    resumeBtn.disabled = true;
+  }
+  } // 关闭 else（非暂停状态）
+}
+
+// ===== 触发部署 =====
+['A', 'B'].forEach(account => {
+  document.getElementById(`deploy-${account}`).addEventListener('click', async () => {
+    if (deploying[account]) return;
+    if (!confirm(`确认触发账号 ${account} 的重新部署？\n\n部署期间该账号站点会短暂不可用。`)) return;
+
+    deploying[account] = true;
+    const btn = document.getElementById(`deploy-${account}`);
+    const result = document.getElementById(`result-${account}`);
+    btn.disabled = true;
+    btn.textContent = '部署中...';
+    btn.classList.add('deploying');
+    result.style.display = 'none';
+
+    try {
+      const data = await apiPost('/api/deploy', { account });
+      result.style.display = 'block';
+      if (data.success) {
+        result.className = 'deploy-result result-success';
+        result.textContent = '✅ ' + data.message;
+        // 10 秒后刷新状态
+        setTimeout(fetchStatus, 10000);
+      } else {
+        result.className = 'deploy-result result-error';
+        result.textContent = '❌ ' + (data.error || '部署失败');
+      }
+    } catch {
+      result.style.display = 'block';
+      result.className = 'deploy-result result-error';
+      result.textContent = '❌ 网络错误，请重试';
+    } finally {
+      deploying[account] = false;
+      btn.classList.remove('deploying');
+      btn.textContent = '一键部署';
+      // 按钮是否可用取决于 hook 是否配置，fetchStatus 会更新
+      fetchStatus();
+    }
+  });
+});
+
+// ===== 暂停/恢复服务 =====
+['A', 'B'].forEach(account => {
+  const handleToggle = async (action) => {
+    if (toggling[account]) return;
+    const actionLabel = action === 'pause' ? '暂停' : '恢复';
+    if (!confirm(`确认${actionLabel}账号 ${account} 的服务？\n\n${action === 'pause' ? '暂停后访问者将看到 503 维护页面。' : '恢复后站点立即可访问。'}`)) return;
+
+    toggling[account] = true;
+    const result = document.getElementById(`result-${account}`);
+    const pauseBtn = document.getElementById(`pause-${account}`);
+    const resumeBtn = document.getElementById(`resume-${account}`);
+    pauseBtn.disabled = true;
+    resumeBtn.disabled = true;
+    pauseBtn.classList.add('toggling');
+    resumeBtn.classList.add('toggling');
+    result.style.display = 'none';
+
+    try {
+      const res = await fetch('/api/toggle', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Panel-Password': panelPassword,
+        },
+        body: JSON.stringify({ account, action }),
+      });
+      const data = await res.json();
+      result.style.display = 'block';
+      if (data.success) {
+        result.className = 'deploy-result result-success';
+        result.textContent = (action === 'pause' ? '⏸️ ' : '▶️ ') + data.message;
+        setTimeout(fetchStatus, 3000);
+      } else {
+        result.className = 'deploy-result result-error';
+        result.textContent = '❌ ' + (data.error || `${actionLabel}失败`);
+      }
+    } catch {
+      result.style.display = 'block';
+      result.className = 'deploy-result result-error';
+      result.textContent = '❌ 网络错误，请重试';
+    } finally {
+      toggling[account] = false;
+      pauseBtn.classList.remove('toggling');
+      resumeBtn.classList.remove('toggling');
+      fetchStatus();
+    }
+  };
+
+  document.getElementById(`pause-${account}`).addEventListener('click', () => handleToggle('pause'));
+  document.getElementById(`resume-${account}`).addEventListener('click', () => handleToggle('resume'));
+});
+
+// ===== 工具函数 =====
+function getStateClass(state) {
+  const map = {
+    READY: 'state-ready',
+    BUILDING: 'state-building',
+    ERROR: 'state-error',
+    CANCELED: 'state-error',
+    QUEUED: 'state-queued',
+    INITIALIZING: 'state-building',
+  };
+  return map[state] || 'state-other';
+}
+
+function formatTime(iso) {
+  const d = new Date(iso);
+  const now = new Date();
+  const diff = (now - d) / 1000;
+  if (diff < 60) return '刚刚';
+  if (diff < 3600) return Math.floor(diff / 60) + ' 分钟前';
+  if (diff < 86400) return Math.floor(diff / 3600) + ' 小时前';
+  return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ===== 初始化 =====
+if (panelPassword) {
+  // 已有密码，尝试验证
+  apiGet('/api/status').then(() => showDashboard()).catch(() => showLogin());
+} else {
+  showLogin();
+}
+</script>
+</body>
+</html>

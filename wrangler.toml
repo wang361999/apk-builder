@@ -1,0 +1,19 @@
+name = "vercel-panel"
+compatibility_date = "2024-01-01"
+pages_build_output_dir = "public"
+
+# 环境变量请在 Cloudflare Dashboard → Settings → Environment Variables 中配置：
+#
+# VERCEL_TOKEN_A          账号 A 的 Vercel API Token（在 vercel.com/account/tokens 创建）
+# VERCEL_PROJECT_ID_A     账号 A 的项目 ID（Vercel → Settings → General → Project ID）
+# DEPLOY_HOOK_A           账号 A 的 Deploy Hook URL
+# SITE_URL_A              账号 A 的站点地址（如 https://your-site.vercel.app）
+# ACCOUNT_NAME_A          账号 A 显示名（如 "主力"）
+#
+# VERCEL_TOKEN_B          账号 B 的 Vercel API Token
+# VERCEL_PROJECT_ID_B     账号 B 的项目 ID
+# DEPLOY_HOOK_B           账号 B 的 Deploy Hook URL
+# SITE_URL_B              账号 B 的站点地址
+# ACCOUNT_NAME_B          账号 B 显示名（如 "备用"）
+#
+# PANEL_PASSWORD          面板访问密码（简单鉴权）
